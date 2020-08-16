@@ -1,0 +1,153 @@
+---
+title: "Final_project"
+author: "Pingping"
+date: "8/16/2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The participants perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to predict the manner in which they did the exercise, which is the "classe" variable in the training set. We've created a report describing how we built different models, how we used cross validation, and give the expected out of sample error. Finally, we used the prediction model to predict 20 different test cases.
+
+## Data loading and cleaning
+
+```{r, message=F}
+setwd("~/R.Studio/Machine_learning/Practical_Machine_Learning_Project")
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+```
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. We thank the providors as they have been very generous in allowing their data to be used for this kind of assignment.
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+urltrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urltest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainpml <- read.csv(url(urltrain))
+testpml  <- read.csv(url(urltest))
+#split the training data into train set and test set for cross validation
+set.seed(12345)
+inTrain <- createDataPartition(trainpml$classe, p = 0.7, list = F)
+training <- trainpml[inTrain, ]
+testing <- trainpml[-inTrain, ]
+training$classe <- as.factor(training$classe)
+testing$classe <- as.factor(testing$classe)
+testing <- trainpml[-inTrain, ]
+dim(training)
+dim(testing)
+sum(is.na.data.frame(training))
+```
+
+As we can see, the training set and testing set both have 160 variables. The training set has 13737 observations, while the testing set has 5885 observations.However, for now the variables have a lot of NAs (901753), which should be removed to get clean data. The Near Zero variance (NZV) variables and the ID variables will also be removed.
+
+```{r}
+# remove the near zero variance variables
+zerovar <- nearZeroVar(training)
+training1 <- training[ ,-zerovar]
+testing1 <- testing[ ,-zerovar]
+testpml1 <- testpml[ ,-zerovar]
+# remove the almost (>95%) NA variables
+trainingNA <- is.na(training1)
+training2 <- training1[ , colMeans(trainingNA)<0.95]
+testing2 <- testing1[ , colMeans(trainingNA)<0.95]
+testpml2 <- testpml1[ , colMeans(trainingNA)<0.95]
+# remove the ID variables
+training3 <- training2[ ,-(1:5)]
+testing3 <- testing2[ ,-(1:5)]
+testpml3 <- testpml2[ ,-(1:5)]
+dim(training3)
+dim(testing3)
+```
+
+After proper data cleaning, now we have 54 variables left in the training and testing datasets.
+
+## Exploratory analysis
+
+First, we'd like to have a brief idea about the correlation between different variables. 
+
+```{r}
+corMatrix <- cor(training3[, -54])
+corrplot(corMatrix, order = "original", method = "color", type = "lower", tl.cex = 0.3, tl.col = rgb(0, 0, 0))
+```
+
+As we can see, some of the variables are highly correlated, which are shown in dark colors. 
+## Modelling and Prediction
+
+### Prediction with Trees
+
+First, we'll try prediction with trees.
+
+```{r}
+set.seed(12345)
+training3$classe <- as.factor(training3$classe)
+testing3$classe <- as.factor(testing3$classe)
+modtrees <- rpart(classe~., training3)
+predtrees0 <- predict(modtrees, testing3)
+predtrees <- factor(colnames(predtrees0)[apply(predtrees0, 1, which.max)])
+Comptrees <- confusionMatrix(predtrees, testing3$classe)
+Comptrees
+plot(Comptrees$table, col = Comptrees$table)
+```
+As we can see, the prediction with trees method has an accuracy of 0.7342.
+
+### Random Forest 
+
+We will then use the Random Forest method.
+
+```{r}
+library(ranger)
+set.seed(12345)
+modrf <- ranger(classe~., training3)
+predrf <- predict(modrf, testing3)[[1]]
+Comprf <- confusionMatrix(predrf, testing3$classe)
+Comprf
+plot(Comprf$table, col = Comprf$table)
+```
+
+As we can see, the accuracy of the random forest model we made is 0.9983.
+
+### Boosting
+
+Finally, we'll use the Boosting method to do the prediction.
+
+```{r}
+set.seed(12345)
+modboost  <- gbm(classe~., data = training3)
+predboost0 <- predict.gbm(modboost, testing3,type = "response")
+predboost <- factor(colnames(predboost0)[apply(predboost0, 1, which.max)])
+Compboost <- confusionMatrix(factor(predboost), testing3$classe)
+Compboost
+plot(Compboost$table, col = Compboost$table)
+```
+
+As we can see the boosting method has an accuracy of 0.8233.
+
+### Model selection
+
+Appearently, the Random Forest model showed the best accuracy as 0.9983. Therefore, we'll use the Random Forest model to predict the testpml dataset.
+
+## Applying the Random Forest model on the testpml dataset
+
+```{r}
+predrmpml <- predict(modrf, testpml3)[[1]]
+predrmpml
+```
+
+Therefore, the predicted value for the 20 observations in the test set would be B A B A A E D B A A B C B A E E A B B B.
