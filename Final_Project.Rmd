@@ -2,7 +2,7 @@
 title: "Final_project"
 author: "Pingping"
 date: "8/16/2020"
-output: html_document
+output: pdf_document
 ---
 
 
